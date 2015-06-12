@@ -300,6 +300,64 @@ module SQLite3
       }.new
 
       @db.define_aggregator("accumulate", acc)
+
+      value = @db.get_first_value( "select accumulate(a) from foo" )
+      assert_equal 6, value
+    end
+
+    def test_create_aggregate_handler
+      @db.execute "create table foo ( a integer primary key, b text )"
+      @db.execute "insert into foo ( b ) values ( 'foo' )"
+      @db.execute "insert into foo ( b ) values ( 'bar' )"
+      @db.execute "insert into foo ( b ) values ( 'baz' )"
+
+      acc = Class.new do
+
+        def self.name ; "accumulate" ; end
+        def self.arity ; 1 ; end
+
+        def initialize
+          @sum = 0
+        end
+
+        def step f, a
+          @sum += a
+        end
+
+        def finalize f
+          f.result = @sum
+        end
+      end
+
+      @db.create_aggregate_handler(acc)
+
+      value = @db.get_first_value( "select accumulate(a) from foo" )
+      assert_equal 6, value
+
+      value = @db.get_first_value( "select accumulate(a) from foo" )
+      assert_equal 6, value
+    end
+
+    def test_create_aggregate_dsl
+      @db.execute "create table foo ( a integer primary key, b text )"
+      @db.execute "insert into foo ( b ) values ( 'foo' )"
+      @db.execute "insert into foo ( b ) values ( 'bar' )"
+      @db.execute "insert into foo ( b ) values ( 'baz' )"
+
+      @db.create_aggregate("accumulate", 1) do
+        step do |func, value|
+          func[:sum] ||= 0
+          func[:sum] += value
+        end
+
+        finalize do |func|
+          func.result = func[:sum]
+        end
+      end
+
+      value = @db.get_first_value( "select accumulate(a) from foo" )
+      assert_equal 6, value
+
       value = @db.get_first_value( "select accumulate(a) from foo" )
       assert_equal 6, value
     end
